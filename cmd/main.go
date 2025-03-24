@@ -1,8 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+)
+
+const (
+	NameKey = "name"
 )
 
 func main() {
@@ -24,19 +30,48 @@ func startServer() {
 
 }
 
+type NameResponse struct {
+	Names    []string `json:"names"`
+	LastName string   `json:"lastName,omitempty"`
+}
+
+func middlewareFunc(next http.Handler) http.Handler {
+
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		slog.Info("Hello from middleware, Method" + request.Method)
+		next.ServeHTTP(writer, request)
+	})
+}
+
 func setupRoutes(router *http.ServeMux) {
-	router.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
+
+	router.Handle("GET /", middlewareFunc(func(writer http.ResponseWriter, request *http.Request) {
+
 		_, err := fmt.Fprint(writer, "Hello World!")
 		if err != nil {
 			panic(err)
 		}
-	})
+	}))
 
-	router.HandleFunc("/hello", func(writer http.ResponseWriter, request *http.Request) {
+	router.HandleFunc("POST /{market}", func(writer http.ResponseWriter, request *http.Request) {
 
-		respondersName := request.URL.Query().Get("name")
+		defer func() {
+			err := request.Body.Close()
+			if err != nil {
+				slog.Info("YOU DUN FUCKED UP CLOSING THE BODY, #YOLO")
+			}
 
-		if respondersName == "" {
+		}()
+
+		respondersName := request.URL.Query()[NameKey]
+
+		body := &NameResponse{}
+
+		if err := json.NewDecoder(request.Body).Decode(body); err != nil {
+			panic("YOLO")
+		}
+
+		if len(respondersName) < 1 {
 			_, err := fmt.Fprint(writer, "You forgot to supply a name in a query parameter.")
 			if err != nil {
 				panic(err)
@@ -45,9 +80,13 @@ func setupRoutes(router *http.ServeMux) {
 			return
 		}
 
-		_, err := fmt.Fprint(writer, "Hello there "+respondersName+"!")
+		res := &NameResponse{
+			Names: respondersName,
+		}
+
+		err := json.NewEncoder(writer).Encode(res)
 		if err != nil {
-			panic(err)
+			panic("yolo")
 		}
 
 	})
